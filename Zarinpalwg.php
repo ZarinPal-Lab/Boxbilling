@@ -91,10 +91,10 @@ class Payment_Adapter_ZarinpalWebGate extends Payment_AdapterAbstract
 		
 		));
 		
-		if($res['Ststus'] == 100){
-            $this->go_url = "https://www.zarinpal.com/pg/StartPay/" . $result['Authority'] . "/";
+		if($res->Ststus == 100){
+            $this->go_url = "https://www.zarinpal.com/pg/StartPay/" . $result->Authority . "/";
         }else{
-            throw new Exception('Zarinpal error : '.$res['Ststus']);
+            throw new Exception('Zarinpal error : '.$res->Ststus);
         }
 
         return $data;
@@ -133,8 +133,8 @@ class Payment_Adapter_ZarinpalWebGate extends Payment_AdapterAbstract
 		
 		));
 
-        if ($res['status'] != 100){
-            throw new Payment_Exception('Sale verification failed: '. $res['status']);
+        if ($res->status != 100){
+            throw new Payment_Exception('Sale verification failed: '. $res->status);
         }
 
         $response = new Payment_Transaction();
