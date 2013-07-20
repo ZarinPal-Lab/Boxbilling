@@ -78,7 +78,7 @@ class Payment_Adapter_ZarinpalWebGate extends Payment_AdapterAbstract
         $amount = (int)$invoice->getTotalWithTax();
 		$callBackUrl =  urlencode($this->getParam('redirect_url'));
 		
-        $client = new nusoap_client('https://www.zarinpal.com/pg/services/WebGate/wsdl', 'wsdl');
+        $client = new nusoap_client('https://de.zarinpal.com/pg/services/WebGate/wsdl', 'wsdl');
 		$res = $client->call('PaymentRequest', array(
 		array(
 					'MerchantID' 	=> $merchantID ,
@@ -120,7 +120,7 @@ class Payment_Adapter_ZarinpalWebGate extends Payment_AdapterAbstract
         $api = $this->getParam('securityCode');
         $trans_id = $ipn['trans_id'];
 		$amount = (int) $invoice->getTotalWithTax();
-		$client = new nusoap_client('https://www.zarinpal.com/pg/services/WebGate/wsdl', 'wsdl');
+		$client = new nusoap_client('https://de.zarinpal.com/pg/services/WebGate/wsdl', 'wsdl');
         $url = $client;
 		$merchant = $api;
 
