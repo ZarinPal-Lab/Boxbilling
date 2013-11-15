@@ -18,139 +18,152 @@
  */
 class Payment_Adapter_ZarinpalWebGate extends Payment_AdapterAbstract
 {
-    public $go_url;
-	
-    public function init()
-    {
+	private $formUrl;
 
-        if (!$this->getParam('securityCode')) {
-        	throw new Payment_Exception('Payment gateway "Zarinpal" is not configured properly. Please update configuration parameter "API Key Code" at "Configuration -> Payments".');
-        }
-    }
-
-    public static function getConfig()
-    {
-        return array(
-            'supports_one_time_payments'   =>  true,
-            'supports_subscriptions'     =>  false,
-            'description'     =>  'Clients will be redirected to Zarinpal.ir to make payment.<br />' ,
-            'form'  => array(
-                 'securityCode' => array('text', array(
-                 			'label' => 'API Key Code',
-                 			'description' => 'To setup your "API Key Code" login to Zarinpal account. Go to LINK "http://zarinpal.com/". Copy "API Key Code" and paste it to this field.',
-                 			'validators' => array('notempty'),
-                 	),
-                 ),
-            ),
-        );
-    }
-
-    /**
-     * Return payment gateway type
-     * @return string
-     */
-    public function getType()
-    {
-        return Payment_AdapterAbstract::TYPE_FORM;
-    }
-
-    /**
-     * Return payment gateway type
-     * @return string
-     */
-    public function getServiceUrl()
-    {
-        if($this->testMode) {
-            return 'http://zarinpal.com/';
-        }
-		return $this->go_url;
-    }
-
-    /**
-     * Init call to webservice or return form params
-     * @param Payment_Invoice $invoice
-     */
-	public function singlePayment(Payment_Invoice $invoice)
+	public function init()
 	{
-		include('nusoap.php');
-        $api = $this->getParam('securityCode');
-		$merchantID = $this->getParam('securityCode');
-        $amount = (int)$invoice->getTotalWithTax();
-		$callBackUrl =  urlencode($this->getParam('redirect_url'));
+		if(!extension_loaded('soap')) {
+			throw new Payment_Exception('Soap extension required for Zarinpal payment gateway module');
+		}
 		
-        $client = new nusoap_client('https://de.zarinpal.com/pg/services/WebGate/wsdl', 'wsdl');
-		$res = $client->call('PaymentRequest', array(
-		array(
-					'MerchantID' 	=> $merchantID ,
-					'Amount' 		=> $amount ,
-					'Description' 	=> $product_id ,
-					'Email' 		=> '' ,
-					'Mobile' 		=> '' ,
-					'CallbackURL' 	=> $callBackUrl
-					)
-		
-		));
-		
-		if($res->Ststus == 100){
-            $this->go_url = "https://www.zarinpal.com/pg/StartPay/" . $result->Authority . "/";
-        }else{
-            throw new Exception('Zarinpal error : '.$res->Ststus);
-        }
-
-        return $data;
+		if (!$this->getParam('merchantID')) {
+			throw new Payment_Exception('Zarinpal Payment gateway is not configured properly. Please update configuration parameters at "Configuration -> Payments".');
+		}
 	}
 
-    /**
-     * Perform recurent payment
-     */
+	public static function getConfig()
+	{
+		return array(
+			'supports_one_time_payments'=> true,
+			'supports_subscriptions'    => false,
+			'description'				=> 'Clients will be redirected to Zarinpal.com to make payment.<br />' ,
+			'form'						=> array(
+													'merchantID' => array('text', array(
+																							'label' => 'Zarinpal MerchantID',
+																							'description' => 'To setup your "Merchant Code" login to Zarinpal account and copy your "Merchant Code" from there.',
+																							'validators' => array('notempty'),
+																						),
+																		),
+												),
+		);
+	}
+
+	/**
+	 * Return payment gateway type
+	 * @return string
+	 */
+	public function getType()
+	{
+		return Payment_AdapterAbstract::TYPE_FORM;
+	}
+
+	/**
+	 * Return payment gateway type
+	 * @return string
+	 */
+	public function getServiceUrl()
+	{
+		if($this->testMode) {
+			throw new Payment_Exception('TestMode Not implemented on Zarinpal');
+		}
+		return $this->formUrl;
+	}
+
+	/**
+	 * Init call to webservice or return form params
+	 * @param Payment_Invoice $invoice
+	 */
+	public function singlePayment(Payment_Invoice $invoice)
+	{
+		$buyerInfo  = $invoice->getBuyer();
+		$merchantID = $this->getParam('merchantID');
+		$amount 	= (int)$invoice->getTotalWithTax();
+		$callBackUrl= $this->getParam('redirect_url');
+		
+		$client = $this->_getSoapClient();
+		
+		$result = $client->PaymentRequest(
+											array(
+													'MerchantID' 	=> $merchantID,
+													'Amount' 		=> $amount,
+													'Description' 	=> 'فاکتور شماره: '. $invoice->getId() .' توضيحات فاکتور: '. $invoice->getTitle(),
+													'Email' 		=> $buyerInfo->getEmail(),
+													'Mobile' 		=> $buyerInfo->getPhone(),
+													'CallbackURL' 	=> $callBackUrl
+												)
+										 );
+
+		if($result->Status == 100){
+			$this->formUrl = 'https://www.zarinpal.com/pg/StartPay/'. $result->Authority .'/';
+		} else {
+			throw new Payment_Exception('Zarinpal Payment error: '. $result->Status);
+		}
+
+		return array();
+	}
+
+	/**
+	 * Perform recurent payment
+	 */
 	public function recurrentPayment(Payment_Invoice $invoice)
 	{
 		throw new Payment_Exception('Not implemented yet');
 	}
 
-    /**
-     * Handle IPN and return response object
-     * @return Payment_Transaction
-     */
+	/**
+	 * Handle IPN and return response object
+	 * @return Payment_Transaction
+	 */
 	public function getTransaction($data, Payment_Invoice $invoice)
 	{
-        $ipn = $data['post'];
-		include_once('nusoap.php');
+		$ipn = $data['get'];
 
-        $api = $this->getParam('securityCode');
-        $trans_id = $ipn['trans_id'];
-		$amount = (int) $invoice->getTotalWithTax();
-		$client = new nusoap_client('https://de.zarinpal.com/pg/services/WebGate/wsdl', 'wsdl');
-        $url = $client;
-		$merchant = $api;
+		if($ipn['Status'] == 'OK'){
+			$merchantID = $this->getParam('merchantID');
+			$amount = (int) $invoice->getTotalWithTax();
+			$client = $this->_getSoapClient();
 
-		$res = $client->call("PaymentVerification", array(
-		array(
-				'MerchantID'	 => $merchant ,
-				'Authority' 	 => $ipn['au'] ,
-				'Amount'		 => $amount
-				)
-		
-		));
+			$result = $client->PaymentVerification(
+													array(
+															'MerchantID'	 => $merchantID,
+															'Authority' 	 => $ipn['Authority'],
+															'Amount'		 => $amount
+														)
+												   );
 
-        if ($res->status != 100){
-            throw new Payment_Exception('Sale verification failed: '. $res->status);
-        }
-
-        $response = new Payment_Transaction();
-        $response->setType(Payment_Transaction::TXTYPE_PAYMENT);
-        $response->setId($trans_id);
-        $response->setAmount($invoice->getTotalWithTax());
-        $response->setCurrency($invoice->getCurrency());
-        $response->setStatus(Payment_Transaction::STATUS_COMPLETE);
-        return $response;
+			if ($result->Status == 100){
+				$response = new Payment_Transaction();
+				$response->setType(Payment_Transaction::TXTYPE_PAYMENT);
+				$response->setId($result->RefID);
+				$response->setAmount($invoice->getTotalWithTax());
+				$response->setCurrency($invoice->getCurrency());
+				$response->setStatus(Payment_Transaction::STATUS_COMPLETE);
+				return $response;
+			} else {
+				throw new Payment_Exception('Payment verification failed: '. $result->Status);
+			}
+		} else {
+			throw new Payment_Exception('Payment not ok. Status: '. $ipn['Status']);
+		}
 	}
-    /**
-     * Check if Ipn is valid
-     */
-    public function isIpnValid($data, Payment_Invoice $invoice)
+	
+	/**
+	 * Check if Ipn is valid
+	 */
+	public function isIpnValid($data, Payment_Invoice $invoice)
+	{
+		$ipn = $data['post'];
+		return true;
+	}
+	
+    private function _getSoapClient()
     {
-        $ipn = $data['post'];
-        return true;
+		$wsdl = 'https://de.zarinpal.com/pg/services/WebGate/wsdl';
+		
+		$options = array(
+			'encoding' => 'UTF-8'
+		);
+		
+		return new SoapClient($wsdl, $options);
     }
 }
