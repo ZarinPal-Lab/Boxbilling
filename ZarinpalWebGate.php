@@ -156,8 +156,8 @@ class Payment_Adapter_ZarinpalWebGate extends Payment_AdapterAbstract
 		return true;
 	}
 	
-    private function _getSoapClient()
-    {
+	private function _getSoapClient()
+	{
 		$wsdl = 'https://de.zarinpal.com/pg/services/WebGate/wsdl';
 		
 		$options = array(
@@ -165,5 +165,6 @@ class Payment_Adapter_ZarinpalWebGate extends Payment_AdapterAbstract
 		);
 		
 		return new SoapClient($wsdl, $options);
-    }
+	}
+
 }
