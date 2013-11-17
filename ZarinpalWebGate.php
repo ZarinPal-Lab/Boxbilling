@@ -16,18 +16,18 @@
  * @license   http://www.boxbilling.com/LICENSE.txt
  * @version   $Id$
  */
-class Payment_Adapter_ZarinpalWebGate extends Payment_AdapterAbstract
+class Payment_Adapter_ZarinpalWebGate
 {
-	private $formUrl;
-
-	public function init()
+	public function __construct($config)
 	{
+		$this->config = $config;
+		
 		if(!extension_loaded('soap')) {
-			throw new Payment_Exception('Soap extension required for Zarinpal payment gateway module');
+			throw new Exception('Soap extension required for Zarinpal payment gateway module');
 		}
 		
-		if (!$this->getParam('merchantID')) {
-			throw new Payment_Exception('Zarinpal Payment gateway is not configured properly. Please update configuration parameters at "Configuration -> Payments".');
+		if (!$this->config['merchantID']) {
+			throw new Exception('Zarinpal Payment gateway is not configured properly. Please update configuration parameters at "Configuration -> Payments".');
 		}
 	}
 
@@ -36,7 +36,7 @@ class Payment_Adapter_ZarinpalWebGate extends Payment_AdapterAbstract
 		return array(
 			'supports_one_time_payments'=> true,
 			'supports_subscriptions'    => false,
-			'description'				=> 'Clients will be redirected to Zarinpal.com to make payment.<br />' ,
+			'description'				=> 'Clients will be redirected to ZarinPal.com to make payment.<br />' ,
 			'form'						=> array(
 													'merchantID' => array('text', array(
 																							'label' => 'Zarinpal MerchantID',
@@ -47,124 +47,113 @@ class Payment_Adapter_ZarinpalWebGate extends Payment_AdapterAbstract
 												),
 		);
 	}
-
+	
 	/**
-	 * Return payment gateway type
-	 * @return string
-	 */
-	public function getType()
+     * 
+     * @param type $api_admin
+     * @param type $invoice_id
+     * @param type $subscription
+     * @return string
+     */
+	public function getHtml($api_admin, $invoice_id, $subscription)
 	{
-		return Payment_AdapterAbstract::TYPE_FORM;
-	}
+		$invoice = $api_admin->invoice_get(array('id' => $invoice_id));
 
-	/**
-	 * Return payment gateway type
-	 * @return string
-	 */
-	public function getServiceUrl()
-	{
-		if($this->testMode) {
-			throw new Payment_Exception('TestMode Not implemented on Zarinpal');
-		}
-		return $this->formUrl;
-	}
-
-	/**
-	 * Init call to webservice or return form params
-	 * @param Payment_Invoice $invoice
-	 */
-	public function singlePayment(Payment_Invoice $invoice)
-	{
-		$buyerInfo  = $invoice->getBuyer();
-		$merchantID = $this->getParam('merchantID');
-		$amount 	= (int)$invoice->getTotalWithTax();
-		$callBackUrl= $this->getParam('redirect_url');
+		$buyer = $invoice['buyer'];
 		
-		$client = $this->_getSoapClient();
-		
+		$client = new SoapClient('https://de.zarinpal.com/pg/services/WebGate/wsdl', array('encoding' => 'UTF-8'));
 		$result = $client->PaymentRequest(
 											array(
-													'MerchantID' 	=> $merchantID,
-													'Amount' 		=> $amount,
-													'Description' 	=> 'فاکتور شماره: '. $invoice->getId() .' توضيحات فاکتور: '. $invoice->getTitle(),
-													'Email' 		=> $buyerInfo->getEmail(),
-													'Mobile' 		=> $buyerInfo->getPhone(),
-													'CallbackURL' 	=> $callBackUrl
+													'MerchantID' 	=> $this->config['merchantID'],
+													'Amount' 		=> $invoice['total'],
+													'Description' 	=> 'فاکتور شماره: '. $invoice['serie_nr'],
+													'Email' 		=> $invoice['buyer']['email'],
+													'Mobile' 		=> '',
+													'CallbackURL' 	=> $this->config['redirect_url']
 												)
 										 );
 
-		if($result->Status == 100){
-			$this->formUrl = 'https://www.zarinpal.com/pg/StartPay/'. $result->Authority .'/';
-		} else {
-			throw new Payment_Exception('Zarinpal Payment error: '. $result->Status);
-		}
-
-		return array();
+		$url = 'https://www.zarinpal.com/pg/StartPay/'. $result->Authority;
+		$data = array();
+		return $this->_generateForm($url, $data, 'get');
 	}
 
-	/**
-	 * Perform recurent payment
-	 */
-	public function recurrentPayment(Payment_Invoice $invoice)
-	{
-		throw new Payment_Exception('Not implemented yet');
-	}
-
-	/**
-	 * Handle IPN and return response object
-	 * @return Payment_Transaction
-	 */
-	public function getTransaction($data, Payment_Invoice $invoice)
-	{
-		$ipn = $data['get'];
-
-		if($ipn['Status'] == 'OK'){
-			$merchantID = $this->getParam('merchantID');
-			$amount = (int) $invoice->getTotalWithTax();
-			$client = $this->_getSoapClient();
-
-			$result = $client->PaymentVerification(
-													array(
-															'MerchantID'	 => $merchantID,
-															'Authority' 	 => $ipn['Authority'],
-															'Amount'		 => $amount
-														)
-												   );
-
-			if ($result->Status == 100){
-				$response = new Payment_Transaction();
-				$response->setType(Payment_Transaction::TXTYPE_PAYMENT);
-				$response->setId($result->RefID);
-				$response->setAmount($invoice->getTotalWithTax());
-				$response->setCurrency($invoice->getCurrency());
-				$response->setStatus(Payment_Transaction::STATUS_COMPLETE);
-				return $response;
-			} else {
-				throw new Payment_Exception('Payment verification failed: '. $result->Status);
+	public function processTransaction($api_admin, $id, $data, $gateway_id)
+	{	
+		if($data['get']['Status'] == 'OK' && strlen($data['get']['Authority']) == 36){
+			$tx = $api_admin->invoice_transaction_get(array('id' => $id));
+			$invoice = $api_admin->invoice_get(array('id' => $tx['invoice_id']));
+			
+			if(!empty($invoice['total'])){
+				
+				$client = new SoapClient('https://de.zarinpal.com/pg/services/WebGate/wsdl', array('encoding' => 'UTF-8'));
+				$result = $client->PaymentVerification(
+														array(
+																'MerchantID'	 => $this->config['merchantID'],
+																'Authority' 	 => $data['get']['Authority'],
+																'Amount'		 => $invoice['total']
+															)
+													   );
+				if($result->Status == 100){
+					
+					$tx_data = array(
+										'id' => $id,
+										'invoice_id' => $data['get']['bb_invoice_id'],
+										'currency'   => $invoice['currency'],
+										'txn_status' => 'complete',
+										'txn_id' => $result->RefID,
+										'amount' => $invoice['total'],
+										'type' => 'payment',
+										'status' => 'complete',
+										'updated_at' => date('c'),
+									);
+					$api_admin->invoice_transaction_update($tx_data);
+					
+					$bd = array(
+						'id'            => $invoice['client']['id'],
+						'amount'        => $invoice['total'],
+						'description'   => 'ZarinPal transaction '. $result->RefID,
+						'type'          => 'ZarinPal',
+						'rel_id'        => $result->RefID,
+					);
+					$api_admin->client_balance_add_funds($bd);
+					$api_admin->invoice_batch_pay_with_credits(array('client_id' => $invoice['client']['id']));
+				} else {
+					throw new Exception('Invalid Payment');
+				}
 			}
 		} else {
-			throw new Payment_Exception('Payment not ok. Status: '. $ipn['Status']);
+			throw new Exception('Invalid Payment');
 		}
-	}
-	
-	/**
-	 * Check if Ipn is valid
-	 */
-	public function isIpnValid($data, Payment_Invoice $invoice)
-	{
-		$ipn = $data['post'];
-		return true;
-	}
-	
-	private function _getSoapClient()
-	{
-		$wsdl = 'https://de.zarinpal.com/pg/services/WebGate/wsdl';
 		
-		$options = array(
-			'encoding' => 'UTF-8'
+		$d = array(
+			'id'        => $id, 
+			'error'     => '',
+			'error_code'=> '',
+			'status'    => 'processed',
+			'updated_at'=> date('c'),
 		);
-		
-		return new SoapClient($wsdl, $options);
+		$api_admin->invoice_transaction_update($d);
+	}
+	
+	private function _generateForm($url, $data, $method = 'post')
+	{
+		$form  = '';
+		$form .= '<form name="payment_form" action="'. $url .'" method="'. $method .'">' . PHP_EOL;
+		if(!empty($data)){
+			foreach($data as $key => $value) {
+				$form .= sprintf('<input type="hidden" name="%s" value="%s" />', $key, $value) . PHP_EOL;
+			}
+		}
+		$form .=  '<input class="bb-button bb-button-submit" type="submit" value="Pay with ZarinPal" id="payment_button"/>'. PHP_EOL;
+		$form .=  '</form>' . PHP_EOL . PHP_EOL;
+
+		if(isset($this->config['auto_redirect']) && $this->config['auto_redirect']) {
+			$form .= sprintf('<h2>%s</h2>', __('Redirecting to ZarinPal.com'));
+			$form .= "<script type='text/javascript'>$(document).ready(function(){    document.getElementById('payment_button').style.display = 'none';    document.forms['payment_form'].submit();});</script>";
+		}
+
+		return $form;
 	}
 
 }
