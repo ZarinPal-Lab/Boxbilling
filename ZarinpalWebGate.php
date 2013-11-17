@@ -74,8 +74,7 @@ class Payment_Adapter_ZarinpalWebGate
 										 );
 
 		$url = 'https://www.zarinpal.com/pg/StartPay/'. $result->Authority;
-		$data = array();
-		return $this->_generateForm($url, $data, 'get');
+		return $this->_generateForm($url, array(), 'get');
 	}
 
 	public function processTransaction($api_admin, $id, $data, $gateway_id)
