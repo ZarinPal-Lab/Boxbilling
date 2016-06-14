@@ -16,7 +16,7 @@
  * @license   http://www.boxbilling.com/LICENSE.txt
  * @version   $Id$
  */
-class Payment_Adapter_ZarinpalWebGate
+class Payment_Adapter_ZarinpalZarinGate
 {
 	public function __construct($config)
 	{
@@ -73,7 +73,7 @@ class Payment_Adapter_ZarinpalWebGate
 												)
 										 );
 
-		$url = 'https://www.zarinpal.com/pg/StartPay/'. $result->Authority;
+		$url = 'https://www.zarinpal.com/pg/StartPay/'. $result->Authority .'/ZarinGate';
 		return $this->_generateForm($url, array(), 'get');
 	}
 
