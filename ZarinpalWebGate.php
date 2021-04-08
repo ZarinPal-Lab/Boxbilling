@@ -79,8 +79,15 @@ class Payment_Adapter_ZarinpalWebGate
         $result = json_decode($result, true, JSON_PRETTY_PRINT);
         curl_close($ch);
 
-        $url = 'https://www.zarinpal.com/pg/StartPay/'. $result['data']['authority'];
-        return $this->_generateForm($url, array(), 'get');
+        echo' <html><body>
+                    <script type="text/javascript" src="https://cdn.zarinpal.com/zarinak/v1/checkout.js"></script>
+                    <script type="text/javascript">
+                    window.onload = function () {
+                    Zarinak.setAuthority("' . $result['data']['authority'] . '");
+                    Zarinak.showQR();
+                    Zarinak.open();
+         };
+        </script></body></html>';
     }
 
     public function processTransaction($api_admin, $id, $data, $gateway_id)
