@@ -1,2 +1,2 @@
-ZarinpalQR-Boxbilling
+ZarinGate-Boxbilling
 =========================
